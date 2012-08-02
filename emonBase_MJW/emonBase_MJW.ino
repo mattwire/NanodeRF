@@ -38,12 +38,22 @@
 #define UNO       //anti crash wachdog reset only works with Uno (optiboot) bootloader, comment out the line if using delianuova
 
 #include <JeeLib.h>	     //https://github.com/jcw/jeelib
+#include <EtherCard.h>		//https://github.com/jcw/ethercard 
 #include <avr/wdt.h>
 
 #define MYNODE 15            
 #define freq RF12_868MHZ     // frequency
 #define group 173            // network group
 #define APIKEY "5ad2b3b67920d2b2eb4af72eb0a9d9e0"
+
+// ethernet interface mac address, must be unique on the LAN
+static byte mymac[] = { 0x42,0x31,0x42,0x21,0xa2,0x2b };
+
+byte Ethernet::buffer[700];
+static uint32_t timer;
+
+//Domain name of remote webserver - leave blank if posting to IP address 
+char website[] PROGMEM = "www.emoncms.org";
 
 //---------------------------------------------------
 // Data structures for transfering data between units
@@ -80,22 +90,6 @@ public:
 };
 PacketBuffer str;
 
-//--------------------------------------------------------------------------
-// Ethernet
-//--------------------------------------------------------------------------
-#include <EtherCard.h>		//https://github.com/jcw/ethercard 
-
-// ethernet interface mac address, must be unique on the LAN
-static byte mymac[] = { 0x42,0x31,0x42,0x21,0x8b,0xad };
-
-//IP address of remote sever, only needed when posting to a server that has not got a dns domain name (staticIP e.g local server) 
-byte Ethernet::buffer[1000];
-static uint32_t timer;
-
-//Domain name of remote webserver - leave blank if posting to IP address 
-char website[] PROGMEM = "grigori.lan";
-//static byte hisip[] = { 192,168,11,165 };    // un-comment for posting to static IP server (no domain name)            
-
 const int redLED = 6;                     // NanodeRF RED indicator LED
 const int greenLED = 5;                   // NanodeRF GREEN indicator LED
 
@@ -111,6 +105,46 @@ unsigned long last_rf;                    // Used to check for regular emontx da
 
 char line_buf[50];                        // Used to store line of http reply header
 
+//-----------------------------------------------------------------------------------
+// Ethernet callback
+// recieve reply and decode
+//-----------------------------------------------------------------------------------
+static void my_callback (byte status, word off, word len) {
+  get_header_line(2,off);      // Get the date and time from the header
+  Serial.print("ok recv from server | ");    // Print out the date and time
+  Serial.println(line_buf);    // Print out the date and time
+  
+  // Decode date time string to get integers for hour, min, sec, day
+  // We just search for the characters and hope they are in the right place
+  char val[1];
+  val[0] = line_buf[23]; val[1] = line_buf[24];
+  int hour = atoi(val);
+  val[0] = line_buf[26]; val[1] = line_buf[27];
+  int mins = atoi(val);
+  val[0] = line_buf[29]; val[1] = line_buf[30];
+  int sec = atoi(val);
+  val[0] = line_buf[11]; val[1] = line_buf[12];
+  int day = atoi(val);
+    
+  if (hour>0 || mins>0 || sec>0) {  //don't send all zeros, happens when server failes to returns reponce to avoide GLCD getting mistakenly set to midnight
+	emonbase.hour = hour;              //add current date and time to payload ready to be sent to emonGLCD
+  	emonbase.mins = mins;
+  }
+  //-----------------------------------------------------------------------------
+  
+  delay(100);
+  
+  // Send time data
+  int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}    // if can send - exit if it gets stuck, as it seems too
+  rf12_sendStart(0, &emonbase, sizeof emonbase);                        // send payload
+  rf12_sendWait(0);
+  
+  Serial.println("time sent to emonGLCD");
+  
+  get_reply_data(off);
+  if (strcmp(line_buf,"ok")) {ethernet_requests = 0; ethernet_error = 0;}  // check for ok reply from emoncms to verify data post request
+ }
+
 //**********************************************************************************************************************
 // SETUP
 //**********************************************************************************************************************
@@ -123,7 +157,7 @@ void setup () {
   delay(100); digitalWrite(redLED,HIGH);                          // turn off redLED
   
   Serial.begin(9600);
-  Serial.println("\n[webClient]");
+  Serial.println("\n[emonBase_MJW]");
 
   if (ether.begin(sizeof Ethernet::buffer, mymac) == 0) {
     Serial.println( "Failed to access Ethernet controller");
@@ -144,7 +178,7 @@ void setup () {
   ethernet_requests = 0;
   ethernet_error=0;
   rf_error=0;
- 
+    
   rf12_initialize(MYNODE, freq,group);
   last_rf = millis()-40000;                                       // setting lastRF back 40s is useful as it forces the ethernet code to run straight away
    
@@ -164,7 +198,7 @@ void loop () {
   wdt_reset();
   #endif
 
-  dhcp_dns();   // handle dhcp and dns setup - see dhcp_dns tab
+  dhcp_dns(); // handle dhcp and dns setup - see dhcp_dns tab
   
   // Display error states on status LED
   if (ethernet_error==1 || rf_error==1 || ethernet_requests > 0) digitalWrite(redLED,LOW);
@@ -230,6 +264,9 @@ void loop () {
   //-----------------------------------------------------------------------------------------------------------------
   ether.packetLoop(ether.packetReceive());
   
+  if (millis() > timer) 
+    timer = millis() + 10000;
+  
   if (data_ready) {
     
     // include temperature data from emonglcd if it has been recieved
@@ -247,7 +284,13 @@ void loop () {
     // and login with sandbox:sandbox
     // To point to your account just enter your WRITE APIKEY 
     ethernet_requests ++;
-//    ether.browseUrl(PSTR("/emoncms3/api/post.json?apikey=5ad2b3b67920d2b2eb4af72eb0a9d9e0&json="),NULL, website, &my_callback);
+    
+//    Stash::prepare(PSTR("GET http://www.emoncms.org/emoncms3/api/post.json?apikey=7299afd5abccff1bbebbe867ebe66958&json=$F"),str.buf);
+  //  ether.tcpSend();
+//    ether.browseUrl(PSTR("/foo/"), "bar", website, my_callback);
+
+    ether.browseUrl(PSTR("/api/post.json?apikey=7299afd5abccff1bbebbe867ebe66958&json="),str.buf, website, my_callback);
+//    ether.browseUrl(PSTR("/emoncms3/api/post.json?apikey=5ad2b3b67920d2b2eb4af72eb0a9d9e0&json="),str.buf, website, my_callback);
 //    ether.httpPost(PSTR("/emoncms3/api/post.json?apikey=5ad2b3b67920d2b2eb4af72eb0a9d9e0&json=")
     data_ready =0;
   }
@@ -256,44 +299,3 @@ void loop () {
 
 }
 //**********************************************************************************************************************
-
-//-----------------------------------------------------------------------------------
-// Ethernet callback
-// recieve reply and decode
-//-----------------------------------------------------------------------------------
-static void my_callback (byte status, word off, word len) {
-  Serial.println("into my_callback");
-  get_header_line(2,off);      // Get the date and time from the header
-  Serial.print("ok recv from server | ");    // Print out the date and time
-  Serial.println(line_buf);    // Print out the date and time
-  
-  // Decode date time string to get integers for hour, min, sec, day
-  // We just search for the characters and hope they are in the right place
-  char val[1];
-  val[0] = line_buf[23]; val[1] = line_buf[24];
-  int hour = atoi(val);
-  val[0] = line_buf[26]; val[1] = line_buf[27];
-  int mins = atoi(val);
-  val[0] = line_buf[29]; val[1] = line_buf[30];
-  int sec = atoi(val);
-  val[0] = line_buf[11]; val[1] = line_buf[12];
-  int day = atoi(val);
-    
-  if (hour>0 || mins>0 || sec>0) {  //don't send all zeros, happens when server failes to returns reponce to avoide GLCD getting mistakenly set to midnight
-	emonbase.hour = hour;              //add current date and time to payload ready to be sent to emonGLCD
-  	emonbase.mins = mins;
-  }
-  //-----------------------------------------------------------------------------
-  
-  delay(100);
-  
-  // Send time data
-  int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}    // if can send - exit if it gets stuck, as it seems too
-  rf12_sendStart(0, &emonbase, sizeof emonbase);                        // send payload
-  rf12_sendWait(0);
-  
-  Serial.println("time sent to emonGLCD");
-  
-  get_reply_data(off);
-  if (strcmp(line_buf,"ok")) {ethernet_requests = 0; ethernet_error = 0;}  // check for ok reply from emoncms to verify data post request
-}

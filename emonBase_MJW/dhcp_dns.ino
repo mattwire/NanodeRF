@@ -28,9 +28,6 @@ void dhcp_dns()
     if (dhcp_status){                          // on success print out ip's
       ether.printIp("IP:  ", ether.myip);
       ether.printIp("GW:  ", ether.gwip);  
-      
-      static byte dnsip[] = {8,8,8,8};  
-      ether.copyIp(ether.dnsip, dnsip);
       ether.printIp("DNS: ", ether.dnsip);
       //ether.copyIp(ether.hisip, hisip);                             // un-comment for posting to static IP server (no domain name)
       //dns_status = 1;                                               // un-comment for posting to static IP server (no domain name)            

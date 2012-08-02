@@ -93,7 +93,7 @@ static uint32_t timer;
 
 //Domain name of remote webserver - leave blank if posting to IP address 
 char website[] PROGMEM = "grigori.lan";
-//static byte hisip[] = { 213,138,101,177 };    // un-comment for posting to static IP server (no domain name)            
+//static byte hisip[] = { 192,168,11,165 };    // un-comment for posting to static IP server (no domain name)            
 
 const int redLED = 6;                     // NanodeRF RED indicator LED
 const int greenLED = 5;                   // NanodeRF GREEN indicator LED
@@ -128,6 +128,15 @@ void setup () {
     Serial.println( "Failed to access Ethernet controller");
     ethernet_error = 1;  
   }
+  else {
+    Serial.print("Ethernet MAC: ");
+    for (byte i = 0; i < 6; ++i) {
+      Serial.print(mymac[i], HEX);
+      if (i < 5)
+        Serial.print(":");
+    }
+  }
+  Serial.println();
 
   dhcp_status = 0;
   dns_status = 0;
@@ -172,7 +181,7 @@ void loop () {
         {
           emontx = *(PayloadTX*) rf12_data;                              // get emontx data
           Serial.println();                                              // print emontx data to serial
-          Serial.print("emonTx data rx");
+          Serial.println("emonTx data rx");
           last_rf = millis();                                            // reset lastRF timer
           
           delay(50);                                                     // make sure serial printing finished
@@ -185,7 +194,7 @@ void loop () {
           // Add data from emontx
           str.print(",realPower:");        str.print(emontx.realPower);
           str.print(",powerFactor:");        str.print(emontx.powerFactor);
-          str.print(",Vrms:");        str.print(emontx.Vrms);
+          str.print(",Vrms:");        str.print(emontx.Vrms/100.0);
           str.print(",temp_emontx:");        str.print(emontx.temperature/100.0);
     
           data_ready = 1;                                                // data is ready
@@ -218,6 +227,7 @@ void loop () {
   //-----------------------------------------------------------------------------------------------------------------
   // 3) Send data via ethernet
   //-----------------------------------------------------------------------------------------------------------------
+  while (ether.packetLoop(ether.packetReceive()) != 0) {}
   ether.packetLoop(ether.packetReceive());
   
   if (data_ready) {
@@ -231,13 +241,14 @@ void loop () {
     
     str.print("}\0");  //  End of json string
     
-    Serial.print("2 "); Serial.println(str.buf); // print to serial json string
+    Serial.print("json: "); Serial.println(str.buf); // print to serial json string
 
     // Example of posting to emoncms v3 demo account goto http://vis.openenergymonitor.org/emoncms3 
     // and login with sandbox:sandbox
     // To point to your account just enter your WRITE APIKEY 
     ethernet_requests ++;
-    ether.browseUrl(PSTR("/emoncms3/api/post.json?apikey=YOURAPIKEY&json="),str.buf, website, my_callback);
+    ether.browseUrl(PSTR("/emoncms3/api/post.json?apikey=5ad2b3b67920d2b2eb4af72eb0a9d9e0&json="),str.buf, website, my_callback);
+        
     data_ready =0;
   }
   
@@ -251,7 +262,7 @@ void loop () {
 // recieve reply and decode
 //-----------------------------------------------------------------------------------
 static void my_callback (byte status, word off, word len) {
-  
+  Serial.println("into my_callback");
   get_header_line(2,off);      // Get the date and time from the header
   Serial.print("ok recv from server | ");    // Print out the date and time
   Serial.println(line_buf);    // Print out the date and time

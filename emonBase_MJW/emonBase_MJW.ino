@@ -46,6 +46,8 @@
 #define group 173            // network group
 #define APIKEY "5ad2b3b67920d2b2eb4af72eb0a9d9e0"
 
+#define HTTP_TIMEOUT 10000	// time to wait for server reply (in ms)
+
 // ethernet interface mac address, must be unique on the LAN
 static byte mymac[] = { 0x42,0x31,0x42,0x21,0xa2,0x2b };
 
@@ -228,7 +230,7 @@ void loop () {
           
           // Add data from emontx
           str.print(",realPower:");        str.print(emontx.realPower);
-          str.print(",powerFactor:");        str.print(emontx.powerFactor);
+          str.print(",powerFactor:");        str.print(emontx.powerFactor/100.0);
           str.print(",Vrms:");        str.print(emontx.Vrms/100.0);
           str.print(",temp_emontx:");        str.print(emontx.temperature/100.0);
     

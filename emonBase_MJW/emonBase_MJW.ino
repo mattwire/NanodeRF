@@ -111,7 +111,7 @@ char line_buf[50];                        // Used to store line of http reply he
 // Ethernet callback
 // recieve reply and decode
 //-----------------------------------------------------------------------------------
-static void my_callback (byte status, word off, word len) {
+static void emoncms_callback (byte status, word off, word len) {
   get_header_line(2,off);      // Get the date and time from the header
   Serial.print("ok recv from server | ");    // Print out the date and time
   Serial.println(line_buf);    // Print out the date and time
@@ -147,9 +147,9 @@ static void my_callback (byte status, word off, word len) {
   if (strcmp(line_buf,"ok")) {ethernet_requests = 0; ethernet_error = 0;}  // check for ok reply from emoncms to verify data post request
  }
 
-//**********************************************************************************************************************
+//*************************************************************************************************
 // SETUP
-//**********************************************************************************************************************
+//*************************************************************************************************
 void setup () {
   
   //Nanode RF LED indictor  setup - green flashing means good - red on for a long time means bad! 
@@ -158,7 +158,7 @@ void setup () {
   pinMode(greenLED, OUTPUT); digitalWrite(greenLED,LOW);       
   delay(100); digitalWrite(redLED,HIGH);                          // turn off redLED
   
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("\n[emonBase_MJW]");
 
   if (ether.begin(sizeof Ethernet::buffer, mymac) == 0) {
@@ -191,9 +191,9 @@ void setup () {
   #endif;
 }
 
-//**********************************************************************************************************************
+//***************************************************************************************************
 // LOOP
-//**********************************************************************************************************************
+//***************************************************************************************************
 void loop () {
   
   #ifdef UNO
@@ -206,51 +206,53 @@ void loop () {
   if (ethernet_error==1 || rf_error==1 || ethernet_requests > 0) digitalWrite(redLED,LOW);
     else digitalWrite(redLED,HIGH);
 
-  //-----------------------------------------------------------------------------------------------------------------
+  //-----------------------------------------------------------------------------------------------
   // 1) On RF recieve
-  //-----------------------------------------------------------------------------------------------------------------
+  //-----------------------------------------------------------------------------------------------
   if (rf12_recvDone()){      
-      if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)
+    if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)
+    {
+      digitalWrite(greenLED,LOW);  // Turn on green LED if RF data received
+      int node_id = (rf12_hdr & 0x1F);
+
+      if (node_id == 10)                                               // EMONTX
       {
-        int node_id = (rf12_hdr & 0x1F);
-        
-        if (node_id == 10)                                               // EMONTX
-        {
-          emontx = *(PayloadTX*) rf12_data;                              // get emontx data
-          Serial.println();                                              // print emontx data to serial
-          Serial.println("emonTx data rx");
-          last_rf = millis();                                            // reset lastRF timer
-          
-          delay(50);                                                     // make sure serial printing finished
+        emontx = *(PayloadTX*) rf12_data;                              // get emontx data
+        Serial.println();                                              // print emontx data to serial
+        Serial.println("emonTx data rx");
+        last_rf = millis();                                            // reset lastRF timer
+
+        delay(50);                                                     // make sure serial printing finished
                                
-          // JSON creation: JSON sent are of the format: {key1:value1,key2:value2} and so on
-          
-          str.reset();                                                   // Reset json string      
-          str.print("{rf_fail:0");                                       // RF recieved so no failure
-          
-          // Add data from emontx
-          str.print(",realPower:");        str.print(emontx.realPower);
-          str.print(",powerFactor:");        str.print(emontx.powerFactor/100.0);
-          str.print(",Vrms:");        str.print(emontx.Vrms/100.0);
-          str.print(",temp_emontx:");        str.print(emontx.temperature/100.0);
-    
-          data_ready = 1;                                                // data is ready
-          rf_error = 0;
-        }
-        
-        if (node_id == 20)                                               // EMONGLCD 
-        {
-          emonglcd = *(PayloadGLCD*) rf12_data;                          // get emonglcd data
-          Serial.print("emonGLCD temp recv: ");                          // print output
-          Serial.println(emonglcd.temperature);  
-          emonglcd_rx = 1;        
-        }
+        // JSON creation: JSON sent are of the format: {key1:value1,key2:value2} and so on
+        str.reset();                                                   // Reset json string      
+        str.print("{rf_fail:0");                                       // RF recieved so no failure
+
+        // Add data from emontx
+        str.print(",realPower:");        str.print(emontx.realPower);
+        str.print(",powerFactor:");        str.print(emontx.powerFactor/100.0);
+        str.print(",Vrms:");        str.print(emontx.Vrms/100.0);
+        str.print(",temp_emontx:");        str.print(emontx.temperature/100.0);
+  
+        data_ready = 1;                                                // data is ready
+        rf_error = 0;
+      }
+
+      if (node_id == 20)                                               // EMONGLCD 
+      {
+        emonglcd = *(PayloadGLCD*) rf12_data;                          // get emonglcd data
+        Serial.print("emonGLCD temp recv: ");                          // print output
+        Serial.println(emonglcd.temperature);  
+        emonglcd_rx = 1;        
       }
     }
 
-  //-----------------------------------------------------------------------------------------------------------------
+    digitalWrite(greenLED,LOW);  // Turn off green LED at end of RF processing
+  }
+
+  //-----------------------------------------------------------------------------------------------
   // 2) If no data is recieved from rf12 module the server is updated every 30s with RFfail = 1 indicator for debugging
-  //-----------------------------------------------------------------------------------------------------------------
+  //-----------------------------------------------------------------------------------------------
   if ((millis()-last_rf)>30000)
   {
     last_rf = millis();                                                 // reset lastRF timer
@@ -261,9 +263,9 @@ void loop () {
   }
 
 
-  //-----------------------------------------------------------------------------------------------------------------
+  //-----------------------------------------------------------------------------------------------
   // 3) Send data via ethernet
-  //-----------------------------------------------------------------------------------------------------------------
+  //-----------------------------------------------------------------------------------------------
   ether.packetLoop(ether.packetReceive());
   
   if (millis() > timer) 
@@ -282,22 +284,13 @@ void loop () {
     
     Serial.print("json: "); Serial.println(str.buf); // print to serial json string
 
-    // Example of posting to emoncms v3 demo account goto http://vis.openenergymonitor.org/emoncms3 
-    // and login with sandbox:sandbox
-    // To point to your account just enter your WRITE APIKEY 
     ethernet_requests ++;
     
-//    Stash::prepare(PSTR("GET http://www.emoncms.org/emoncms3/api/post.json?apikey=7299afd5abccff1bbebbe867ebe66958&json=$F"),str.buf);
-  //  ether.tcpSend();
-//    ether.browseUrl(PSTR("/foo/"), "bar", website, my_callback);
-
-    ether.browseUrl(PSTR("/api/post.json?apikey=7299afd5abccff1bbebbe867ebe66958&json="),str.buf, website, my_callback);
-//    ether.browseUrl(PSTR("/emoncms3/api/post.json?apikey=5ad2b3b67920d2b2eb4af72eb0a9d9e0&json="),str.buf, website, my_callback);
-//    ether.httpPost(PSTR("/emoncms3/api/post.json?apikey=5ad2b3b67920d2b2eb4af72eb0a9d9e0&json=")
-    data_ready =0;
+    ether.browseUrl(PSTR("/api/post.json?apikey=7299afd5abccff1bbebbe867ebe66958&json="),str.buf, website, emoncms_callback);
+    data_ready = 0;
   }
   
   if (ethernet_requests > 10) delay(10000); // Reset the nanode if more than 10 request attempts have been tried without a reply
 
 }
-//**********************************************************************************************************************
+//*************************************************************************************************

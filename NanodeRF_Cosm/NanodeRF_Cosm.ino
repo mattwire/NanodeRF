@@ -86,6 +86,8 @@ static uint32_t timer;
 char website[] PROGMEM = "api.cosm.com";
 
 const int redLED = 6;                     // NanodeRF RED indicator LED
+//const int redLED = 17;  		  // Open Kontrol Gateway LED indicator
+
 const int greenLED = 5;                   // NanodeRF GREEN indicator LED
 
 int ethernet_error = 0;                   // Etherent (controller/DHCP) error flag
@@ -114,6 +116,8 @@ void setup () {
   Serial.begin(9600);
   Serial.println("\n[webClient]");
 
+  //if (ether.begin(sizeof Ethernet::buffer, mymac, 10) == 0) {	//for use with Open Kontrol Gateway 
+  if (ether.begin(sizeof Ethernet::buffer, mymac) == 0) {	//for use with NanodeRF
   if (ether.begin(sizeof Ethernet::buffer, mymac) == 0) {
     Serial.println( "Failed to access Ethernet controller");
     ethernet_error = 1;  
@@ -125,6 +129,10 @@ void setup () {
   ethernet_error=0;
   rf_error=0;
  
+//For use with the modified JeeLib library to enable setting RFM12B SPI CS pin in the sketch. Download from: https://github.com/openenergymonitor/jeelib 
+//rf12_set_cs(9);  //Open Kontrol Gateway	
+//rf12_set_cs(10); //emonTx, emonGLCD, NanodeRF, JeeNode
+
   rf12_initialize(MYNODE, freq,group);
   last_rf = millis()-40000;                                       // setting lastRF back 40s is useful as it forces the ethernet code to run straight away
    
@@ -239,7 +247,6 @@ static void my_callback (byte status, word off, word len) {
   Serial.println(line_buf);
   Serial.println(strlen(line_buf));
   
-  
   if (0 == strncmp(line_buf, "HTTP/1.1 200 OK", 15)) {
     
     get_header_line(2,off);      // Get the date and time from the header
@@ -252,26 +259,24 @@ static void my_callback (byte status, word off, word len) {
     val[0] = line_buf[23]; val[1] = line_buf[24];
     int hour = atoi(val);
     val[0] = line_buf[26]; val[1] = line_buf[27];
-    int mins = atoi(val);
+    int minute = atoi(val);
     val[0] = line_buf[29]; val[1] = line_buf[30];
-    int sec = atoi(val);
+    int second = atoi(val);
     val[0] = line_buf[11]; val[1] = line_buf[12];
     int day = atoi(val);
-      
-    if (hour>0 || mins>0 || sec>0) {  //don't send all zeros, happens when server failes to returns reponce to avoide GLCD getting mistakenly set to midnight
-  	emonbase.hour = hour;              //add current date and time to payload ready to be sent to emonGLCD
-    	emonbase.mins = mins;
+    
+    // Don't send all zeros, happens when server failes to returns reponce to avoide GLCD getting mistakenly set to midnight
+    if (hour>0 || minute>0 || second>0) 
+    {  
+      delay(100);
+    
+      char data[] = {'t',hour,minute,second};
+      int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}
+      rf12_sendStart(0, data, sizeof data);
+      rf12_sendWait(0);
+    
+      Serial.println("time sent to emonGLCD");
     }
-    //-----------------------------------------------------------------------------
-    
-    delay(100);
-    
-    // Send time data
-    int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}    // if can send - exit if it gets stuck, as it seems too
-    rf12_sendStart(0, &emonbase, sizeof emonbase);                        // send payload
-    rf12_sendWait(0);
-    
-    Serial.println("time sent to emonGLCD");
     
     ethernet_requests = 0; ethernet_error = 0;
   }

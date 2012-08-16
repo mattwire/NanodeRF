@@ -38,24 +38,23 @@
 #define UNO       //anti crash wachdog reset only works with Uno (optiboot) bootloader, comment out the line if using delianuova
 
 #include <JeeLib.h>	     //https://github.com/jcw/jeelib
-#include <EtherCard.h>		//https://github.com/jcw/ethercard 
+#include <EtherCard.h>	     //https://github.com/jcw/ethercard
+#include <mac_eeprom.h>      //https://github.com/mattwire/mac_eeprom
+#include <EEPROM.h>
 #include <avr/wdt.h>
 
 #define MYNODE 15            
 #define freq RF12_868MHZ     // frequency
 #define group 173            // network group
-#define APIKEY "5ad2b3b67920d2b2eb4af72eb0a9d9e0"
 
 #define HTTP_TIMEOUT 10000	// time to wait for server reply (in ms)
-
-// ethernet interface mac address, must be unique on the LAN
-static byte mymac[] = { 0x42,0x31,0x42,0x21,0xa2,0x2b };
 
 byte Ethernet::buffer[700];
 static uint32_t timer;
 
 //Domain name of remote webserver - leave blank if posting to IP address 
 char website[] PROGMEM = "www.emoncms.org";
+//char website[] PROGMEM = "grigori.lan";
 
 //---------------------------------------------------
 // Data structures for transfering data between units
@@ -160,20 +159,21 @@ void setup () {
   
   Serial.begin(115200);
   Serial.println("\n[emonBase_MJW]");
+  
+  byte mac[6];
+  char macstr[18]; //00:00:00:00:00:00 (17+0)
+  getMACFromEEPROM(mac);
+  formatMACForPrint(mac,macstr);
+//  Serial.println(macstr);
 
-  if (ether.begin(sizeof Ethernet::buffer, mymac) == 0) {
+  if (ether.begin(sizeof Ethernet::buffer, mac) == 0) {
     Serial.println( "Failed to access Ethernet controller");
     ethernet_error = 1;  
   }
   else {
     Serial.print("Ethernet MAC: ");
-    for (byte i = 0; i < 6; ++i) {
-      Serial.print(mymac[i], HEX);
-      if (i < 5)
-        Serial.print(":");
-    }
+    Serial.println(macstr);
   }
-  Serial.println();
 
   dhcp_status = 0;
   dns_status = 0;
@@ -247,7 +247,7 @@ void loop () {
       }
     }
 
-    digitalWrite(greenLED,LOW);  // Turn off green LED at end of RF processing
+    digitalWrite(greenLED,HIGH);  // Turn off green LED at end of RF processing
   }
 
   //-----------------------------------------------------------------------------------------------
@@ -287,6 +287,7 @@ void loop () {
     ethernet_requests ++;
     
     ether.browseUrl(PSTR("/api/post.json?apikey=7299afd5abccff1bbebbe867ebe66958&json="),str.buf, website, emoncms_callback);
+//    ether.browseUrl(PSTR("emoncms3/api/post.json?apikey=5ad2b3b67920d2b2eb4af72eb0a9d9e0&json="),str.buf, website, emoncms_callback);
     data_ready = 0;
   }
   

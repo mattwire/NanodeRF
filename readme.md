@@ -16,7 +16,19 @@ The same frequency RFM12B's should be used on both the emonTx and NanodeRF, the 
  
 Older version of the Nanode can be used with certain changes, see: http://openenergymonitor.org/emon/node/227
 
-## NanodeRF Examples
+## NanodeRF Code guide
+The NanodeRF code guide goes through main components required to put a full base station firmware together. It's recommended that you work through these examples first so that you have a good understanding of how the full firmware's work.
+
+The guide includes:
+
+* [01 - Fixed Packets](https://github.com/openenergymonitor/NanodeRF/blob/master/Guide/a_FixedPackets/a_FixedPackets.ino)
+* [02 - MultiNode](https://github.com/openenergymonitor/NanodeRF/blob/master/Guide/b_MultiNode/b_MultiNode.ino)
+* [03 - Basic Web Client](https://github.com/openenergymonitor/NanodeRF/blob/master/Guide/c_BasicWebClient/c_BasicWebClient.ino)
+* [04 - PacketBuffer](https://github.com/openenergymonitor/NanodeRF/blob/master/Guide/d_PacketBuffer/d_PacketBuffer.ino)
+* [05 - Basic MultiNode Web Client](https://github.com/openenergymonitor/NanodeRF/blob/master/Guide/e_BasicMultiNodeWebClient/e_BasicMultiNodeWebClient.ino)
+* [06 - Receiving a Reply](https://github.com/openenergymonitor/NanodeRF/blob/master/Guide/f_ReceivingReply/f_ReceivingReply.ino)
+
+## Full NanodeRF Firmware's
 
 * **NanodeRF_multinode**
 The multinode firmware is the most flexible firmware for posting data up to emoncms, it relays data from up to the 30 nodes that the rfm12 library implementation can handle up to emoncms. You dont need to re-program the firmware each time you add a new node or variables on a particular node. It constructs a CSV format string to be sent to emoncms.

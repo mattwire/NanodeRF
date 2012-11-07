@@ -7,7 +7,7 @@ void dhcp_dns()
   // Putting DHCP setup and DNS lookup in the main loop allows for: 
   // powering nanode before ethernet is connected
   //-----------------------------------------------------------------------------------
-  if (!ether.dhcpValid()) dhcp_status = 0;    // if dhcp expired start request for new lease by changing status
+ // if (!ether.dhcpSetup()) dhcp_status = 0;    // if dhcp expired start request for new lease by changing status
   
   if (!dhcp_status){
     
@@ -31,9 +31,14 @@ void dhcp_dns()
       static byte dnsip[] = {8,8,8,8};  
       ether.copyIp(ether.dnsip, dnsip);
       ether.printIp("DNS: ", ether.dnsip);
-      //ether.copyIp(ether.hisip, hisip);                             // un-comment for posting to static IP server (no domain name)
-      //dns_status = 1;                                               // un-comment for posting to static IP server (no domain name)            
-    } else { ethernet_error = 1; }  
+      
+      if (use_hisip==true)
+      {
+        ether.copyIp(ether.hisip, hisip);
+        dns_status = 1;          
+      }
+      
+    } else { ethernet_error = 1; Serial.println("DHCP failed"); }  
   }
   
   //-----------------------------------------------------------------------------------

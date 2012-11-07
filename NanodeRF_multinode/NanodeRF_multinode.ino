@@ -27,7 +27,6 @@
 	- dhcp_dns.ino
 */
 
-#define DEBUG     //comment out to disable serial printing to increase long term stability 
 #define UNO       //anti crash wachdog reset only works with Uno (optiboot) bootloader, comment out the line if using delianuova
 
 #include <JeeLib.h>	     //https://github.com/jcw/jeelib
@@ -35,7 +34,7 @@
 
 #define MYNODE 15            
 #define freq RF12_433MHZ     // frequency
-#define group 210            // network group 
+#define group 210            // network group
 
 //---------------------------------------------------------------------
 // The PacketBuffer class is used to generate the json string that is send via ethernet - JeeLabs
@@ -63,16 +62,29 @@ PacketBuffer str;
 //--------------------------------------------------------------------------
 #include <EtherCard.h>		//https://github.com/jcw/ethercard 
 
+
+
 // ethernet interface mac address, must be unique on the LAN
 static byte mymac[] = { 0x42,0x31,0x42,0x21,0x30,0x31 };
+
+// 1) Set this to the domain name of your hosted emoncms - leave blank if posting to IP address 
+char website[] PROGMEM = "emoncms.org";
+
+// or if your posting to a static IP server:
+static byte hisip[] = { 192,168,1,10 };
+
+// change to true if you would like the sketch to use hisip
+boolean use_hisip = false;  
+
+// 2) If your emoncms install is in a subdirectory add details here i.e "/emoncms3"
+char basedir[] = "";
+
+// 3) Set to your account write apikey 
+char apikey[] = "YOURAPIKEY";
 
 //IP address of remote sever, only needed when posting to a server that has not got a dns domain name (staticIP e.g local server) 
 byte Ethernet::buffer[700];
 static uint32_t timer;
-
-//Domain name of remote webserver - leave blank if posting to IP address 
-char website[] PROGMEM = "emoncms.org";
-//static byte hisip[] = { 213,138,101,177 };    // un-comment for posting to static IP server (no domain name)            
 
 const int redLED = 6;                     // NanodeRF RED indicator LED
 //const int redLED = 17;  		  // Open Kontrol Gateway LED indicator
@@ -156,6 +168,8 @@ void loop () {
         byte n = rf12_len;
          
         str.reset();
+        str.print(basedir); str.print("/api/post.json?");
+        str.print("apikey="); str.print(apikey);
         str.print("&node=");  str.print(node_id);
         str.print("&csv=");
         for (byte i=0; i<n; i+=2)
@@ -179,7 +193,9 @@ void loop () {
   {
     last_rf = millis();                                                 // reset lastRF timer
     str.reset();                                                        // reset json string
-    str.print("&json={rf_fail:1}\0");                                            // No RF received in 30 seconds so send failure 
+    str.print(basedir); str.print("/api/post.json?");
+    str.print("apikey="); str.print(apikey);
+    str.print("&json={rf_fail:1}\0");                                   // No RF received in 30 seconds so send failure 
     data_ready = 1;                                                     // Ok, data is ready
     rf_error=1;
   }
@@ -196,7 +212,7 @@ void loop () {
     // Example of posting to emoncms.org http://emoncms.org 
     // To point to your account just enter your WRITE APIKEY 
     ethernet_requests ++;
-    ether.browseUrl(PSTR("/api/post.json?apikey=YOURAPIKEY"),str.buf, website, my_callback);
+    ether.browseUrl(PSTR("") ,str.buf, website, my_callback);
     data_ready =0;
   }
   
@@ -205,8 +221,10 @@ void loop () {
   if ((millis()-time60s)>60000)
   {
     time60s = millis();                                                 // reset lastRF timer
+    str.reset();
+    str.print(basedir); str.print("/time/local.json?"); str.print("apikey="); str.print(apikey);
     Serial.println("Time request sent");
-    ether.browseUrl(PSTR("/time/local.json?apikey=YOURAPIKEY"),str.buf, website, my_callback);
+    ether.browseUrl(PSTR("") ,str.buf, website, my_callback);
   }
 }
 //**********************************************************************************************************************
@@ -227,7 +245,7 @@ static void my_callback (byte status, word off, word len) {
     Serial.print("Time: ");
     Serial.println(line_buf);
     
-    char tmp[] = {line_buf[1],line_buf[2]};
+    char tmp[] = {line_buf[1],line_buf[2],0};
     byte hour = atoi(tmp);
     tmp[0] = line_buf[4]; tmp[1] = line_buf[5];
     byte minute = atoi(tmp);
